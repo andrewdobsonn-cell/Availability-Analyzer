@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function AvailabilityAnalyzer() {
@@ -8,6 +8,34 @@ export default function AvailabilityAnalyzer() {
   const [view, setView] = useState('table');
   const [fileLoaded, setFileLoaded] = useState(false);
   const [teamSize, setTeamSize] = useState(2);
+  
+  // Filters
+  const [filterState, setFilterState] = useState('All');
+  const [filterWorkPref, setFilterWorkPref] = useState('All');
+
+  const getStateFromOfficeAndTags = (office, tags) => {
+    // Combine office and tags to search
+    const searchText = `${office} ${tags}`.toLowerCase();
+    
+    if (searchText.includes('annapolis') || searchText.includes('baltimore') || 
+        searchText.includes('bethesda') || searchText.includes('bel-air')) {
+      return 'Maryland';
+    }
+    if (searchText.includes('boston') || searchText.includes('mwb') || 
+        searchText.includes('north of boston') || searchText.includes('nob') || 
+        searchText.includes('sob') || searchText.includes('south of boston') || 
+        searchText.includes('bos')) {
+      return 'Massachusetts';
+    }
+    if (searchText.includes('chi') || searchText.includes('chicago')) {
+      return 'Illinois';
+    }
+    if (searchText.includes('northern virginia') || searchText.includes('nva') || 
+        searchText.includes('northern-va')) {
+      return 'Virginia';
+    }
+    return 'Unknown';
+  };
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -22,7 +50,22 @@ export default function AvailabilityAnalyzer() {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       
       const arrayData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-      const headerRowIndex = 4;
+      
+      // Find the header row by looking for "Caregiver Name"
+      let headerRowIndex = -1;
+      for (let i = 0; i < Math.min(10, arrayData.length); i++) {
+        const row = arrayData[i];
+        if (row[1] === 'Caregiver Name') {
+          headerRowIndex = i;
+          console.log('Found header row at index:', i);
+          console.log('Header row:', row);
+          break;
+        }
+      }
+      
+      if (headerRowIndex === -1) {
+        throw new Error('Could not find header row with "Caregiver Name"');
+      }
       
       const processedData = [];
       for (let i = headerRowIndex + 1; i < arrayData.length; i++) {
@@ -30,15 +73,32 @@ export default function AvailabilityAnalyzer() {
         const caregiverName = row[1];
         
         if (caregiverName && caregiverName.trim() !== '') {
+          const office = row[0] || '';
+          const tags = row[3] || '';
+          
+          // Log first few caregivers to debug
+          if (processedData.length < 3) {
+            console.log(`Caregiver ${processedData.length + 1}:`, caregiverName);
+            console.log('  Column 5:', row[5]);
+            console.log('  Column 6 (should be Sunday):', row[6]);
+            console.log('  Column 7 (should be Monday):', row[7]);
+            console.log('  Column 8 (should be Tuesday):', row[8]);
+          }
+          
           processedData.push({
             name: caregiverName,
-            sunday: row[5] === 1 ? 1 : 0,
-            monday: row[6] === 1 ? 1 : 0,
-            tuesday: row[7] === 1 ? 1 : 0,
-            wednesday: row[8] === 1 ? 1 : 0,
-            thursday: row[9] === 1 ? 1 : 0,
-            friday: row[10] === 1 ? 1 : 0,
-            saturday: row[11] === 1 ? 1 : 0
+            office: office,
+            state: getStateFromOfficeAndTags(office, tags),
+            designation: row[2] || '',
+            tags: tags,
+            workPreference: row[4] || 'Unknown',
+            sunday: (row[6] === 1 || row[6] === '1') ? 1 : 0,
+            monday: (row[7] === 1 || row[7] === '1') ? 1 : 0,
+            tuesday: (row[8] === 1 || row[8] === '1') ? 1 : 0,
+            wednesday: (row[9] === 1 || row[9] === '1') ? 1 : 0,
+            thursday: (row[10] === 1 || row[10] === '1') ? 1 : 0,
+            friday: (row[11] === 1 || row[11] === '1') ? 1 : 0,
+            saturday: (row[12] === 1 || row[12] === '1') ? 1 : 0
           });
         }
       }
@@ -52,6 +112,26 @@ export default function AvailabilityAnalyzer() {
     }
   };
 
+  // Get unique values for filters
+  const uniqueStates = useMemo(() => {
+    const states = [...new Set(caregivers.map(c => c.state))].filter(s => s);
+    return ['All', ...states.sort()];
+  }, [caregivers]);
+
+  const uniqueWorkPrefs = useMemo(() => {
+    const prefs = [...new Set(caregivers.map(c => c.workPreference))].filter(p => p);
+    return ['All', ...prefs.sort()];
+  }, [caregivers]);
+
+  // Apply filters
+  const filteredCaregivers = useMemo(() => {
+    return caregivers.filter(cg => {
+      const stateMatch = filterState === 'All' || cg.state === filterState;
+      const workPrefMatch = filterWorkPref === 'All' || cg.workPreference === filterWorkPref;
+      return stateMatch && workPrefMatch;
+    });
+  }, [caregivers, filterState, filterWorkPref]);
+
   const getAvailableByDay = () => {
     const days = {
       Sunday: [],
@@ -63,7 +143,7 @@ export default function AvailabilityAnalyzer() {
       Saturday: []
     };
 
-    caregivers.forEach(caregiver => {
+    filteredCaregivers.forEach(caregiver => {
       if (caregiver.sunday === 1) days.Sunday.push(caregiver.name);
       if (caregiver.monday === 1) days.Monday.push(caregiver.name);
       if (caregiver.tuesday === 1) days.Tuesday.push(caregiver.name);
@@ -120,12 +200,10 @@ export default function AvailabilityAnalyzer() {
     const suggestions = [];
     const used = new Set();
 
-    // Filter caregivers with at least one day available
-    const availableCaregivers = caregivers.filter(cg => 
+    const availableCaregivers = filteredCaregivers.filter(cg => 
       getDaysAvailable(cg).length > 0
     );
 
-    // Generate teams
     const maxTeams = 10;
     let attempts = 0;
     const maxAttempts = 1000;
@@ -133,25 +211,21 @@ export default function AvailabilityAnalyzer() {
     while (suggestions.length < maxTeams && attempts < maxAttempts) {
       attempts++;
       
-      // Start with a random caregiver
       const availablePool = availableCaregivers.filter(cg => !used.has(cg.name));
       if (availablePool.length < teamSize) break;
 
       const team = [];
       const teamNames = new Set();
       
-      // Pick first member
       const firstIndex = Math.floor(Math.random() * availablePool.length);
       const firstMember = availablePool[firstIndex];
       team.push(firstMember);
       teamNames.add(firstMember.name);
 
-      // Add remaining members trying to maximize coverage
       for (let i = 1; i < teamSize; i++) {
         let bestCandidate = null;
         let bestCoverage = 0;
 
-        // Try to find the best complementary caregiver
         availablePool.forEach(candidate => {
           if (!teamNames.has(candidate.name)) {
             const testTeam = [...team, candidate];
@@ -181,14 +255,11 @@ export default function AvailabilityAnalyzer() {
           coverageCount
         });
 
-        // Mark these caregivers as used
         team.forEach(member => used.add(member.name));
       }
     }
 
-    // Sort by coverage (best coverage first)
     suggestions.sort((a, b) => b.coverageCount - a.coverageCount);
-
     return suggestions;
   };
 
@@ -242,7 +313,9 @@ export default function AvailabilityAnalyzer() {
           <div className="flex justify-between items-start mb-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-800 mb-2">Caregiver Availability Analyzer</h1>
-              <p className="text-gray-600">Total Caregivers: {caregivers.length}</p>
+              <p className="text-gray-600">
+                Total Caregivers: {caregivers.length} | Filtered: {filteredCaregivers.length}
+              </p>
             </div>
             <button
               onClick={() => setFileLoaded(false)}
@@ -250,6 +323,52 @@ export default function AvailabilityAnalyzer() {
             >
               Upload New File
             </button>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6">
+            <h3 className="font-semibold text-gray-800 mb-3">Filters</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  State:
+                </label>
+                <select
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {uniqueStates.map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Work Preference:
+                </label>
+                <select
+                  value={filterWorkPref}
+                  onChange={(e) => setFilterWorkPref(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {uniqueWorkPrefs.map(pref => (
+                    <option key={pref} value={pref}>{pref}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {(filterState !== 'All' || filterWorkPref !== 'All') && (
+              <button
+                onClick={() => {
+                  setFilterState('All');
+                  setFilterWorkPref('All');
+                }}
+                className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Clear all filters
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2 mb-6 flex-wrap">
@@ -287,58 +406,66 @@ export default function AvailabilityAnalyzer() {
 
           {view === 'table' && (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-blue-600 text-white">
-                    <th className="border border-blue-700 px-4 py-3 text-left font-semibold sticky left-0 bg-blue-600 z-10">
-                      Caregiver Name
+                    <th className="border border-blue-700 px-3 py-2 text-left font-semibold sticky left-0 bg-blue-600 z-10">
+                      Caregiver
                     </th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Sun</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Mon</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Tue</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Wed</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Thu</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Fri</th>
-                    <th className="border border-blue-700 px-4 py-3 text-center font-semibold">Sat</th>
+                    <th className="border border-blue-700 px-3 py-2 text-left font-semibold">State</th>
+                    <th className="border border-blue-700 px-3 py-2 text-left font-semibold">Work Pref</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Sun</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Mon</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Tue</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Wed</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Thu</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Fri</th>
+                    <th className="border border-blue-700 px-3 py-2 text-center font-semibold">Sat</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {caregivers.map((caregiver, idx) => (
+                  {filteredCaregivers.map((caregiver, idx) => (
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                      <td className="border border-gray-300 px-4 py-2 font-medium text-gray-800 sticky left-0 z-10 bg-inherit">
+                      <td className="border border-gray-300 px-3 py-2 font-medium text-gray-800 sticky left-0 z-10 bg-inherit">
                         {caregiver.name}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className="border border-gray-300 px-3 py-2 text-gray-700">
+                        {caregiver.state}
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2 text-gray-700">
+                        {caregiver.workPreference}
+                      </td>
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.sunday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.sunday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.monday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.monday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.tuesday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.tuesday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.wednesday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.wednesday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.thursday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.thursday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.friday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.friday}
                       </td>
-                      <td className={`border border-gray-300 px-4 py-2 text-center ${
+                      <td className={`border border-gray-300 px-3 py-2 text-center ${
                         caregiver.saturday === 1 ? 'bg-green-100 text-green-800 font-bold' : 'bg-red-50 text-red-600'
                       }`}>
                         {caregiver.saturday}
@@ -397,7 +524,7 @@ export default function AvailabilityAnalyzer() {
 
               {teamSuggestions.length === 0 ? (
                 <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4">
-                  <p className="text-yellow-800">Not enough available caregivers to create teams of {teamSize}.</p>
+                  <p className="text-yellow-800">Not enough available caregivers to create teams of {teamSize} with current filters.</p>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -427,7 +554,10 @@ export default function AvailabilityAnalyzer() {
                             const days = getDaysAvailable(member);
                             return (
                               <div key={memberIdx} className="bg-white rounded-lg p-4 border border-gray-300 shadow-sm">
-                                <div className="font-semibold text-gray-800 mb-2">{member.name}</div>
+                                <div className="font-semibold text-gray-800 mb-1">{member.name}</div>
+                                <div className="text-xs text-gray-600 mb-2">
+                                  {member.state} • {member.workPreference}
+                                </div>
                                 <div className="text-sm text-gray-600">
                                   Available: <span className="font-medium text-blue-700">{days.join(', ')}</span>
                                 </div>
