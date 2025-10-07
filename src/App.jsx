@@ -12,6 +12,7 @@ export default function AvailabilityAnalyzer() {
   // Filters
   const [filterState, setFilterState] = useState('All');
   const [filterWorkPref, setFilterWorkPref] = useState('All');
+  const [filterNotes, setFilterNotes] = useState('');
 
   const getStateFromOfficeAndTags = (office, tags) => {
     // Combine office and tags to search
@@ -75,6 +76,7 @@ export default function AvailabilityAnalyzer() {
         if (caregiverName && caregiverName.trim() !== '') {
           const office = row[0] || '';
           const tags = row[3] || '';
+          const availabilityNotes = row[5] || '';
           
           // Log first few caregivers to debug
           if (processedData.length < 3) {
@@ -92,6 +94,7 @@ export default function AvailabilityAnalyzer() {
             designation: row[2] || '',
             tags: tags,
             workPreference: row[4] || 'Unknown',
+            availabilityNotes: availabilityNotes,
             sunday: (row[6] === 1 || row[6] === '1') ? 1 : 0,
             monday: (row[7] === 1 || row[7] === '1') ? 1 : 0,
             tuesday: (row[8] === 1 || row[8] === '1') ? 1 : 0,
@@ -128,9 +131,11 @@ export default function AvailabilityAnalyzer() {
     return caregivers.filter(cg => {
       const stateMatch = filterState === 'All' || cg.state === filterState;
       const workPrefMatch = filterWorkPref === 'All' || cg.workPreference === filterWorkPref;
-      return stateMatch && workPrefMatch;
+      const notesMatch = filterNotes === '' || 
+        (cg.availabilityNotes && cg.availabilityNotes.toLowerCase().includes(filterNotes.toLowerCase()));
+      return stateMatch && workPrefMatch && notesMatch;
     });
-  }, [caregivers, filterState, filterWorkPref]);
+  }, [caregivers, filterState, filterWorkPref, filterNotes]);
 
   const getAvailableByDay = () => {
     const days = {
@@ -328,7 +333,7 @@ export default function AvailabilityAnalyzer() {
           {/* Filters */}
           <div className="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-6">
             <h3 className="font-semibold text-gray-800 mb-3">Filters</h3>
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   State:
@@ -357,12 +362,25 @@ export default function AvailabilityAnalyzer() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Availability Notes:
+                </label>
+                <input
+                  type="text"
+                  value={filterNotes}
+                  onChange={(e) => setFilterNotes(e.target.value)}
+                  placeholder="Search notes..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            {(filterState !== 'All' || filterWorkPref !== 'All') && (
+            {(filterState !== 'All' || filterWorkPref !== 'All' || filterNotes !== '') && (
               <button
                 onClick={() => {
                   setFilterState('All');
                   setFilterWorkPref('All');
+                  setFilterNotes('');
                 }}
                 className="mt-3 text-sm text-blue-600 hover:text-blue-800 font-medium"
               >
