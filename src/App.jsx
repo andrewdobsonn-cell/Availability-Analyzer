@@ -73,3 +73,9 @@ export default function AvailabilityAnalyzer() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const uniqueStates = useMemo(() => ['All', ...new Set(caregivers.map(c => c.state))].sort(), [caregivers]);
+  
+  const uniqueMarkets = useMemo(() => {
+    const subset = filterState === 'All' ? caregivers : caregivers
