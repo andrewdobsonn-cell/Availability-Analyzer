@@ -79,20 +79,4 @@ export default function AvailabilityAnalyzer() {
     const subset = filterState === 'All' ? caregivers : caregivers.filter(c => c.state === filterState);
     return ['All', ...new Set(subset.map(c => c.market))].sort();
   }, [caregivers, filterState]);
-  const uniqueWorkPrefs = useMemo(() => ['All', ...new Set(caregivers.map(c => c.workPreference))].sort(), [caregivers]);
-
-  const filteredCaregivers = useMemo(() => {
-    return caregivers.filter(cg => {
-      return (filterState === 'All' || cg.state === filterState) &&
-             (filterMarket === 'All' || cg.market === filterMarket) &&
-             (filterWorkPref === 'All' || cg.workPreference === filterWorkPref) &&
-             ((cg.availabilityNotes || '').toLowerCase().includes(filterNotes.toLowerCase()));
-    });
-  }, [caregivers, filterState, filterMarket, filterWorkPref, filterNotes]);
-
-  const styles = `
-    .app-container { font-family: sans-serif; background: #ffffff; color: #111827; min-height: 100vh; }
-    .header { border-bottom: 1px solid #e5e7eb; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-    .filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; padding: 1.5rem 2rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
-    .filter-label { font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 0.5rem; display: block; }
-    .filter-select { width: 100%; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.5rem; font-size
+  const uniqueWorkPrefs = useMemo(() => ['All', ...
