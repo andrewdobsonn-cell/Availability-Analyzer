@@ -8,7 +8,6 @@ export default function AvailabilityAnalyzer() {
   const [view, setView] = useState('table');
   const [fileLoaded, setFileLoaded] = useState(false);
   
-  // Filters
   const [filterState, setFilterState] = useState('All');
   const [filterMarket, setFilterMarket] = useState('All'); 
   const [filterWorkPref, setFilterWorkPref] = useState('All');
@@ -43,12 +42,10 @@ export default function AvailabilityAnalyzer() {
       for (let i = headerRowIndex + 1; i < arrayData.length; i++) {
         const row = arrayData[i];
         if (row[1] && row[1].trim() !== '') {
-          // Forward-Fill State Persistence
           const rowOffice = row[0] || '';
           const identifiedState = getStateFromOffice(rowOffice);
           if (identifiedState) currentState = identifiedState;
 
-          // Market Extraction from Tags
           const tags = row[3] || '';
           const market = tags.split(',')[0].trim() || 'Unknown';
           
@@ -82,6 +79,7 @@ export default function AvailabilityAnalyzer() {
     const subset = filterState === 'All' ? caregivers : caregivers.filter(c => c.state === filterState);
     return ['All', ...new Set(subset.map(c => c.market))].sort();
   }, [caregivers, filterState]);
+  const uniqueWorkPrefs = useMemo(() => ['All', ...new Set(caregivers.map(c => c.workPreference))].sort(), [caregivers]);
 
   const filteredCaregivers = useMemo(() => {
     return caregivers.filter(cg => {
@@ -93,11 +91,8 @@ export default function AvailabilityAnalyzer() {
   }, [caregivers, filterState, filterMarket, filterWorkPref, filterNotes]);
 
   const styles = `
-    .app-container { font-family: 'Inter', sans-serif; background: #ffffff; color: #111827; min-height: 100vh; }
+    .app-container { font-family: sans-serif; background: #ffffff; color: #111827; min-height: 100vh; }
     .header { border-bottom: 1px solid #e5e7eb; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; }
     .filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; padding: 1.5rem 2rem; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
     .filter-label { font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 0.5rem; display: block; }
-    .filter-select { width: 100%; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.5rem; font-size: 0.875rem; }
-    .table-container { padding: 2rem; overflow-x: auto; }
-    .data-table { width: 100%; border-collapse: collapse; text-align: left; }
-    .data-table th { padding: 0.75rem 1rem; background: #f3f4f6; font-size:
+    .filter-select { width: 100%; border: 1px solid #d1d5db; border-radius: 0.5rem; padding: 0.5rem; font-size
